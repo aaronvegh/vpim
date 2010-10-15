@@ -362,6 +362,71 @@ module Vpim
         tel
       end
     end
+    
+    # Represents the value of an EMAIL field.
+    class Url < String
+      # home, work (Array of String): the location referred to by the address. The
+      # inclusion of location parameters in a vCard seems to be non-conformant,
+      # strictly speaking, but also seems to be widespread.
+      attr_accessor :location
+      
+      def initialize(url='') #:nodoc:
+        @location = []
+        super(url)
+      end
+
+      def inspect #:nodoc:
+        s = "#<#{self.class.to_s}: #{to_str.inspect}"
+        s << @location.join(", ") if @location.first
+        s
+      end
+
+      def encode #:nodoc:
+        value = to_str.strip
+
+        if value.length < 1
+          raise InvalidEncodingError, "Url must have a value"
+        end
+
+        params = [ @location ]
+
+        params = params.flatten.compact.map { |s| s.to_str.downcase }.uniq
+
+        paramshash = {}
+
+        paramshash['TYPE'] = params if params.first
+
+        Vpim::DirectoryInfo::Field.create( 'URL', value, paramshash)
+      end
+
+      def Url.decode(field) #:nodoc:
+        value = field.to_text.strip
+
+        if value.length < 1
+          raise InvalidEncodingError, "Url must have a value"
+        end
+
+        urel = Url.new(value)
+
+        params = field.pvalues('TYPE')
+
+        if params
+          params.each do |p|
+            p.downcase!
+            case p
+            when 'home', 'work'
+              urel.location << p
+            
+          end
+          # Strip duplicates
+          [ urel.location ].each do |a|
+            a.uniq!
+          end
+        end
+
+        urel
+      end
+    end
 
     # The name from a vCard, including all the components of the N: and FN:
     # fields.
@@ -1359,8 +1424,17 @@ module Vpim
 
 
       # Add a URL field, URL.
-      def add_url(url)
-        @card << Vpim::DirectoryInfo::Field.create( 'URL', url.to_str );
+      # def add_url(url)
+      #         @card << Vpim::DirectoryInfo::Field.create( 'URL', url.to_str );
+      #       end
+      
+      def add_url(url) # :yield: url
+        x = Vpim::Vcard::Url.new(url)
+        if block_given?
+          yield x
+        end
+        @card << x.encode
+        self
       end
 
       # Add a Field, +field+.
